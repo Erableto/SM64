@@ -6,13 +6,10 @@
 #include "gfx_dimensions.h"
 #include "main.h"
 #include "memory.h"
-#include "object_list_processor.h"
 #include "print.h"
 #include "rendering_graph_node.h"
 #include "shadow.h"
 #include "sm64.h"
-
-static s32 sRenderMarioHeldObjectOnly = FALSE;
 
 /**
  * This file contains the code that processes the scene graph for rendering.
@@ -178,9 +175,6 @@ void geo_process_master_list_sub(struct GraphNodeMasterList *node) {
  * render modes of layers.
  */
 void geo_append_display_list(void *displayList, s16 layer) {
-    if (sRenderMarioHeldObjectOnly && gCurGraphNodeHeldObject == NULL) {
-        return;
-    }
 
 #ifdef F3DEX_GBI_2
     gSPLookAt(gDisplayListHead++, &lookAt);
@@ -810,8 +804,6 @@ s32 obj_is_in_view(struct GraphNodeObject *node, Mat4 matrix) {
 void geo_process_object(struct Object *node) {
     Mat4 mtxf;
     s32 hasAnimation = (node->header.gfx.node.flags & GRAPH_RENDER_HAS_ANIMATION) != 0;
-    s32 renderMarioHeldObjectOnly =
-        (node == gMarioObject) && (node->header.gfx.node.flags & GRAPH_RENDER_INVISIBLE);
 
     if (node->header.gfx.areaIndex == gCurGraphNodeRoot->areaIndex) {
         if (node->header.gfx.throwMatrix != NULL) {
@@ -836,12 +828,11 @@ void geo_process_object(struct Object *node) {
         if (node->header.gfx.animInfo.curAnim != NULL) {
             geo_set_animation_globals(&node->header.gfx.animInfo, hasAnimation);
         }
-        if (renderMarioHeldObjectOnly || obj_is_in_view(&node->header.gfx, gMatStack[gMatStackIndex])) {
+        if (obj_is_in_view(&node->header.gfx, gMatStack[gMatStackIndex])) {
             Mtx *mtx = alloc_display_list(sizeof(*mtx));
 
             mtxf_to_mtx(mtx, gMatStack[gMatStackIndex]);
             gMatStackFixed[gMatStackIndex] = mtx;
-            sRenderMarioHeldObjectOnly = renderMarioHeldObjectOnly;
             if (node->header.gfx.sharedChild != NULL) {
                 gCurGraphNodeObject = (struct GraphNodeObject *) node;
                 node->header.gfx.sharedChild->parent = &node->header.gfx.node;
@@ -852,7 +843,6 @@ void geo_process_object(struct Object *node) {
             if (node->header.gfx.node.children != NULL) {
                 geo_process_node_and_siblings(node->header.gfx.node.children);
             }
-            sRenderMarioHeldObjectOnly = FALSE;
         }
 
         gMatStackIndex--;
@@ -884,7 +874,6 @@ void geo_process_held_object(struct GraphNodeHeldObject *node) {
     Mat4 mat;
     Vec3f translation;
     Mtx *mtx = alloc_display_list(sizeof(*mtx));
-    s32 renderMarioHeldObjectOnly = sRenderMarioHeldObjectOnly;
 
 #ifdef F3DEX_GBI_2
     gSPLookAt(gDisplayListHead++, &lookAt);
@@ -927,7 +916,6 @@ void geo_process_held_object(struct GraphNodeHeldObject *node) {
             geo_set_animation_globals(&node->objNode->header.gfx.animInfo, hasAnimation);
         }
 
-        sRenderMarioHeldObjectOnly = FALSE;
         geo_process_node_and_siblings(node->objNode->header.gfx.sharedChild);
         gCurGraphNodeHeldObject = NULL;
         gCurrAnimType = gGeoTempState.type;
@@ -937,7 +925,6 @@ void geo_process_held_object(struct GraphNodeHeldObject *node) {
         gCurrAnimAttribute = gGeoTempState.attribute;
         gCurrAnimData = gGeoTempState.data;
         gMatStackIndex--;
-        sRenderMarioHeldObjectOnly = renderMarioHeldObjectOnly;
     }
 
     if (node->fnNode.node.children != NULL) {
